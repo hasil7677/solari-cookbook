@@ -62,6 +62,20 @@ code-generation call graded on vibes.
     `python3` on their own — confirms `is_prime`/`hello-world`-tier
     correctness isn't the interesting part; recovering from a real,
     reproducible environment fact on the first try, unprompted, is.
+  - **Recovered from its own malformed tool call, on a fresh task.** Told to
+    write `wordcount.py`, test it against four cases, and only `finish` once
+    all four print `PASS`. It wrote the script, checked it with four piped
+    `sh -c` runs, then wrote `test_wordcount.py` and tried to run it. The
+    tool call was wrong twice in two different ways: first
+    `run_command(cmd='', args=['python3', 'test_wordcount.py'])`, which got
+    a real `ERROR: cmd.start: cmd is required`; then
+    `cmd='python3'` with `python3` repeated inside `args`, which got a real
+    `exit=2` and `can't open file '//python3'`. Third try was the correct
+    `{cmd: 'python3', args: ['test_wordcount.py']}` shape, and the output was
+    `Test 1` through `Test 4` all `PASS`. Same write -> run -> read-the-real-
+    error -> fix loop as above, but on the model's own tool-call mistake
+    rather than an environment fact -
+    [`reports/report-20260905-222444.md`](reports/report-20260905-222444.md).
 
 Across all 4 live runs: 3 independent HTTP re-checks, all green; one genuine
 harness bug found and fixed; two distinct classes of real error hit and
@@ -125,6 +139,13 @@ python main.py --task "Write a script that computes the first 20 prime numbers a
   None of `flask`, `fastapi`, or `requests` are installed - confirmed via
   real `import` attempts, not assumption. Stick to `python3` + the standard
   library unless a task first confirms a package is installed.
+- **A leaked sandbox looks like a hang.** The Solari account used for these
+  runs allows 2 concurrent sandboxes. If a run is killed before teardown, its
+  sandbox stays alive and counts against that limit, and every later run then
+  stalls with no obvious error. Before assuming a code bug, list live
+  sandboxes with `SandboxClient.list()` and clear leaked ones with
+  `client.kill(sandbox_id)`. The limit is what was observed on this account,
+  not a documented constant.
 - **No independent check for non-HTTP tasks.** `verify.py` only re-checks
   `service_url` claims. A task with no running service (e.g. the prime-number
   script) has no automated cross-check beyond the transcript itself and
